@@ -1,0 +1,25 @@
+[MASTER]
+ignore=tests,data
+ignore-patterns=test_.*?\.py
+
+[MESSAGES CONTROL]
+disable=
+    C0103,  # Invalid name
+    R0913,  # Too many arguments
+    R0902,  # Too many instance attributes  
+    W0212,  # Access to protected member
+    C0301,  # Line too long (handled by formatter)
+
+[FORMAT]
+max-line-length=100
+
+[DESIGN]
+max-args=8
+max-attributes=15
+max-locals=20
+
+[BASIC]
+good-names=i,j,k,ex,_,x,y,r,c,dr,dc,nr,nc,bg,fg,rb,tk,f,e
+
+[SIMILARITIES]
+min-similarity-lines=10

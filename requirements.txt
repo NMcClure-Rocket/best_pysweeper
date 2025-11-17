@@ -1,0 +1,25 @@
+# PySweeper Game Requirements
+
+# Testing dependencies
+pytest>=7.4.0
+pytest-cov>=4.1.0
+
+# Code quality
+pylint>=3.0.0
+
+# Python 3.7 or higher is recommended
+# Required modules (all part of standard library):
+# - tkinter (GUI framework)
+# - json (for leaderboard data)
+# - time (for timer functionality)
+# - random (for mine placement)
+# - datetime (for timestamps)
+# - dataclasses (for configuration)
+# - typing (for type hints)
+
+# Note: tkinter is included with most Python installations
+# If tkinter is not available, install it:
+#   - Windows: Included with Python
+#   - macOS: Included with Python
+#   - Linux: sudo apt-get install python3-tk (Ubuntu/Debian)
+#           sudo yum install python3-tkinter (Fedora/RHEL)
