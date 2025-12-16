@@ -374,12 +374,16 @@ class MinesweeperGUI:
         self.elapsed_time = 0
         self.timer_running = False
         self.timer_id: Optional[str] = None
+        self.is_paused = False
+        self.pause_start_time: Optional[float] = None
 
         # UI elements
         self.buttons = []
         self.mine_counter_label: Optional[tk.Label] = None
         self.timer_label: Optional[tk.Label] = None
         self.reset_button: Optional[tk.Button] = None
+        self.pause_button: Optional[tk.Button] = None
+        self.pause_overlay: Optional[tk.Label] = None
         self.main_frame: Optional[tk.Frame] = None
         self.board_frame: Optional[tk.Frame] = None
 
@@ -412,7 +416,11 @@ class MinesweeperGUI:
 
     def _center_window(self):
         """Center the window on screen."""
+        # Update multiple times to ensure all widgets are properly sized
         self.root.update_idletasks()
+        self.root.update()
+        self.root.update_idletasks()
+        
         width = self.root.winfo_width()
         height = self.root.winfo_height()
         x = (self.root.winfo_screenwidth() // 2) - (width // 2)
@@ -434,7 +442,7 @@ class MinesweeperGUI:
         """Create the user interface."""
         # Main container
         self.main_frame = tk.Frame(self.root, bg=COLORS['background'])
-        self.main_frame.pack(padx=PADDING, pady=PADDING)
+        self.main_frame.pack(padx=PADDING, pady=PADDING, expand=True, fill=tk.BOTH)
 
         # Header
         self._create_header()
@@ -442,11 +450,11 @@ class MinesweeperGUI:
         # Game board
         self._create_board()
 
-        # Footer with buttons
-        self._create_footer()
-
         # Bind window close event
         self.root.protocol("WM_DELETE_WINDOW", self._on_closing)
+        
+        # Ensure window is properly sized
+        self.root.update_idletasks()
 
     def _create_header(self):
         """Create the header with mine counter, reset button, and timer."""
@@ -465,14 +473,51 @@ class MinesweeperGUI:
         )
         self.mine_counter_label.pack(side=tk.LEFT, padx=(5, 0))
 
-        # Reset button (center)
-        self.reset_button = tk.Button(
-            header, text="🚩", font=(FONT_FAMILY, 20),
+        # Center button frame with all buttons
+        button_frame = tk.Frame(header, bg=COLORS['header'])
+        button_frame.pack(side=tk.LEFT, expand=True)
+        
+        # Main Menu button
+        tk.Button(
+            button_frame, text="Menu", font=(FONT_FAMILY, FONT_SIZE_BUTTON),
+            command=self._return_to_menu, relief=tk.RAISED,
+            bg=COLORS['button'], activebackground=COLORS['button_hover'],
+            fg=COLORS['text'], width=8
+        ).pack(side=tk.LEFT, padx=2)
+        
+        # Play Again button
+        tk.Button(
+            button_frame, text="New", font=(FONT_FAMILY, FONT_SIZE_BUTTON),
             command=self._new_game, relief=tk.RAISED,
             bg=COLORS['button'], activebackground=COLORS['button_hover'],
-            fg=COLORS['text']
+            fg=COLORS['text'], width=8
+        ).pack(side=tk.LEFT, padx=2)
+        
+        # Best Times button
+        tk.Button(
+            button_frame, text="Times", font=(FONT_FAMILY, FONT_SIZE_BUTTON),
+            command=self._show_leaderboard, relief=tk.RAISED,
+            bg=COLORS['button'], activebackground=COLORS['button_hover'],
+            fg=COLORS['text'], width=8
+        ).pack(side=tk.LEFT, padx=2)
+        
+        # Reset button
+        self.reset_button = tk.Button(
+            button_frame, text="🚩", font=(FONT_FAMILY, 20),
+            command=self._new_game, relief=tk.RAISED,
+            bg=COLORS['button'], activebackground=COLORS['button_hover'],
+            fg=COLORS['text'], width=3
         )
-        self.reset_button.pack(side=tk.LEFT, expand=True)
+        self.reset_button.pack(side=tk.LEFT, padx=5)
+        
+        # Pause button
+        self.pause_button = tk.Button(
+            button_frame, text="⏸", font=(FONT_FAMILY, 20),
+            command=self._toggle_pause, relief=tk.RAISED,
+            bg=COLORS['button'], activebackground=COLORS['button_hover'],
+            fg=COLORS['text'], width=3
+        )
+        self.pause_button.pack(side=tk.LEFT, padx=2)
 
         # Timer (right)
         timer_frame = tk.Frame(header, bg=COLORS['header'])
@@ -491,32 +536,6 @@ class MinesweeperGUI:
         self.board_frame = tk.Frame(self.main_frame, bg=COLORS['background'])
         self.board_frame.pack()
 
-    def _create_footer(self):
-        """Create footer with action buttons."""
-        footer = tk.Frame(self.main_frame, bg=COLORS['background'])
-        footer.pack(fill=tk.X, pady=(PADDING, 0))
-
-        # Main Menu button
-        tk.Button(
-            footer, text="Main Menu", font=(FONT_FAMILY, FONT_SIZE_BUTTON),
-            command=self._return_to_menu, bg=COLORS['button'],
-            activebackground=COLORS['button_hover'], fg=COLORS['text'], width=15
-        ).pack(side=tk.TOP, pady=2)
-
-        # Play Again button
-        tk.Button(
-            footer, text="Play Again", font=(FONT_FAMILY, FONT_SIZE_BUTTON),
-            command=self._new_game, bg=COLORS['button'],
-            activebackground=COLORS['button_hover'], fg=COLORS['text'], width=15
-        ).pack(side=tk.TOP, pady=2)
-
-        # Best Times button
-        tk.Button(
-            footer, text="Best Times", font=(FONT_FAMILY, FONT_SIZE_BUTTON),
-            command=self._show_leaderboard, bg=COLORS['button'],
-            activebackground=COLORS['button_hover'], fg=COLORS['text'], width=15
-        ).pack(side=tk.TOP, pady=2)
-
     def _create_board_buttons(self):
         """Create the grid of buttons for the game board."""
         # Clear existing buttons
@@ -528,17 +547,25 @@ class MinesweeperGUI:
         for row in range(self.difficulty.rows):
             button_row = []
             for col in range(self.difficulty.cols):
-                btn = tk.Button(
+                # Create a frame to hold the button with fixed pixel dimensions
+                cell_frame = tk.Frame(
                     self.board_frame,
-                    width=2,
-                    height=1,
+                    width=self.cell_size,
+                    height=self.cell_size,
+                    bg=COLORS['background']
+                )
+                cell_frame.grid(row=row, column=col, padx=1, pady=1)
+                cell_frame.grid_propagate(False)  # Prevent frame from resizing
+                
+                btn = tk.Button(
+                    cell_frame,
                     font=(FONT_FAMILY, min(FONT_SIZE_CELL, self.cell_size // 2), 'bold'),
                     bg=COLORS['cell_hidden'],
                     fg=COLORS['text'],
                     relief=tk.RAISED,
                     bd=2
                 )
-                btn.grid(row=row, column=col, padx=1, pady=1)
+                btn.place(relwidth=1, relheight=1)  # Fill the frame completely
 
                 # Bind click events
                 btn.bind('<Button-1>', lambda e, r=row, c=col: self._on_left_click(r, c))
@@ -550,6 +577,15 @@ class MinesweeperGUI:
     def _new_game(self):
         """Start a new game."""
         self._stop_timer()
+        
+        # Reset pause state
+        if self.is_paused:
+            self.is_paused = False
+            self.pause_start_time = None
+            self._hide_pause_overlay()
+            if self.pause_button:
+                self.pause_button.config(text="⏸")
+        
         self.game = MinesweeperGame(
             self.difficulty.rows,
             self.difficulty.cols,
@@ -568,6 +604,9 @@ class MinesweeperGUI:
             row: Row of the clicked cell
             col: Column of the clicked cell
         """
+        if self.is_paused:
+            return
+        
         if self.game.state not in [GameState.READY, GameState.PLAYING]:
             return
 
@@ -616,6 +655,9 @@ class MinesweeperGUI:
             row: Row of the clicked cell
             col: Column of the clicked cell
         """
+        if self.is_paused:
+            return
+        
         if self.game.state not in [GameState.READY, GameState.PLAYING]:
             return
 
@@ -684,7 +726,7 @@ class MinesweeperGUI:
 
     def _update_timer(self):
         """Update the timer display."""
-        if self.timer_running and self.start_time:
+        if self.timer_running and self.start_time and not self.is_paused:
             elapsed = int(time.time() - self.start_time)
             minutes = elapsed // 60
             seconds = elapsed % 60
@@ -694,6 +736,84 @@ class MinesweeperGUI:
     def _update_reset_button(self, emoji: str):
         """Update the reset button emoji."""
         self.reset_button.config(text=emoji)
+
+    def _toggle_pause(self):
+        """Toggle game pause state."""
+        if self.game.state not in [GameState.PLAYING]:
+            return
+        
+        if self.is_paused:
+            self._resume_game()
+        else:
+            self._pause_game()
+    
+    def _pause_game(self):
+        """Pause the game."""
+        if self.game.state != GameState.PLAYING or self.is_paused:
+            return
+        
+        self.is_paused = True
+        self.pause_start_time = time.time()
+        
+        # Stop the timer display updates
+        if self.timer_id:
+            self.root.after_cancel(self.timer_id)
+            self.timer_id = None
+        
+        # Update pause button
+        self.pause_button.config(text="▶")
+        
+        # Create pause overlay
+        self._show_pause_overlay()
+    
+    def _resume_game(self):
+        """Resume the game."""
+        if not self.is_paused:
+            return
+        
+        self.is_paused = False
+        
+        # Adjust start time to account for pause duration
+        if self.pause_start_time and self.start_time:
+            pause_duration = time.time() - self.pause_start_time
+            self.start_time += pause_duration
+        
+        self.pause_start_time = None
+        
+        # Update pause button
+        self.pause_button.config(text="⏸")
+        
+        # Remove pause overlay
+        self._hide_pause_overlay()
+        
+        # Resume timer
+        if self.timer_running:
+            self._update_timer()
+    
+    def _show_pause_overlay(self):
+        """Show a pause overlay on the board."""
+        if self.pause_overlay:
+            return
+        
+        # Create a semi-transparent overlay
+        self.pause_overlay = tk.Label(
+            self.board_frame,
+            text="PAUSED\n\nClick ▶ to Resume",
+            font=(FONT_FAMILY, 24, 'bold'),
+            bg=COLORS['background'],
+            fg=COLORS['text'],
+            relief=tk.RAISED,
+            bd=3
+        )
+        
+        # Place overlay over the board
+        self.pause_overlay.place(relx=0.5, rely=0.5, anchor=tk.CENTER)
+    
+    def _hide_pause_overlay(self):
+        """Hide the pause overlay."""
+        if self.pause_overlay:
+            self.pause_overlay.destroy()
+            self.pause_overlay = None
 
     def _handle_win(self):
         """Handle game win - check for high score and show congratulations."""
